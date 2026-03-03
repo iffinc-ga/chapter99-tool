@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IEEPA Tariff Report Processor</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 10px auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 25px;
+            max-height: 95vh;
+            overflow-y: auto;
+        }
+
+        h1 { color: #333; text-align: center; margin-bottom: 5px; font-size: 1.8em; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 18px; font-size: 0.95em; }
+
+        /* ── Tariff status banner ── */
+        .tariff-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            font-size: 0.85em;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .tariff-status.loading { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+        .tariff-status.ready   { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+        .tariff-status.error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .spinner {
+            width: 16px; height: 16px;
+            border: 2px solid #ffc10766;
+            border-top-color: #856404;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Upload area ── */
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 35px 20px;
+            text-align: center;
+            background: #f8f9ff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 15px;
+        }
+        .upload-area:hover { background: #eef1ff; border-color: #764ba2; }
+        .upload-area.dragover { background: #e0e7ff; border-color: #764ba2; transform: scale(1.02); }
+        .upload-area.loaded { border-color: #10b981; background: #f0fdf4; cursor: default; }
+        .upload-area.disabled { opacity: 0.45; pointer-events: none; }
+
+        .upload-icon { font-size: 2.5em; margin-bottom: 8px; }
+        .upload-text { font-size: 1em; color: #333; margin-bottom: 5px; }
+        .upload-hint { color: #888; font-size: 0.82em; }
+        .upload-loaded-name { color: #059669; font-size: 0.85em; font-weight: 600; margin-top: 6px; }
+
+        input[type="file"] { display: none; }
+
+        /* ── Buttons ── */
+        .btn {
+            border: none; padding: 13px 30px; font-size: 1em;
+            border-radius: 10px; cursor: pointer; width: 100%;
+            font-weight: bold; transition: all 0.3s ease; margin-bottom: 10px;
+            display: block;
+        }
+        .btn-process {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; opacity: 0.4; pointer-events: none;
+        }
+        .btn-process.ready { opacity: 1; pointer-events: all; }
+        .btn-process.ready:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(102,126,234,0.4); }
+
+        .btn-download {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+        .btn-download:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(16,185,129,0.4); }
+
+        .btn-new {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 11px 30px;
+        }
+        .btn-new:hover { background: #f0f2ff; }
+
+        /* ── Progress ── */
+        .progress-container { margin-top: 15px; display: none; }
+        .progress-container.active { display: block; }
+        .progress-bar { width: 100%; height: 25px; background: #e0e0e0; border-radius: 15px; overflow: hidden; margin-bottom: 8px; }
+        .progress-fill {
+            height: 100%; background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%; transition: width 0.3s ease; display: flex; align-items: center;
+            justify-content: center; color: white; font-weight: bold; font-size: 0.85em;
+        }
+        .progress-text { text-align: center; color: #666; font-size: 0.9em; }
+
+        /* ── Result ── */
+        .result-container { margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 10px; display: none; }
+        .result-container.active { display: block; }
+        .success-icon { font-size: 2em; text-align: center; margin-bottom: 8px; }
+        .result-message { text-align: center; color: #333; font-size: 0.9em; margin-bottom: 15px; }
+
+        .result-stats {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 10px; margin-bottom: 15px;
+        }
+        .stat-box {
+            background: white; border-radius: 8px; padding: 10px;
+            text-align: center; border: 1px solid #e0e0e0;
+        }
+        .stat-box .stat-num { font-size: 1.2em; font-weight: bold; color: #667eea; }
+        .stat-box .stat-label { font-size: 0.72em; color: #888; margin-top: 2px; }
+
+        /* ── Info / error ── */
+        .info-box {
+            background: #fff3cd; border-left: 4px solid #ffc107;
+            padding: 8px 12px; margin-bottom: 15px; border-radius: 5px; font-size: 0.8em;
+        }
+        .info-box h3 { color: #856404; margin-bottom: 5px; font-size: 0.95em; }
+        .info-box ul { margin: 0 0 0 18px; padding: 0; color: #856404; }
+
+        .error-message {
+            background: #fee; color: #c33; padding: 12px; border-radius: 10px;
+            margin-top: 15px; display: none; font-size: 0.9em;
+        }
+        .error-message.active { display: block; }
+
+        .tab-preview { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+        .tab-badge {
+            background: #667eea; color: white; padding: 4px 10px;
+            border-radius: 6px; font-size: 0.78em; font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📊 IEEPA Tariff Report Processor</h1>
+    <p class="subtitle">Upload your EDI CSV to generate a 3-tab Excel report</p>
+
+    <!-- TARIFF file load status -->
+    <div class="tariff-status loading" id="tariffStatus">
+        <div class="spinner" id="tariffSpinner"></div>
+        <span id="tariffStatusText">Loading TARIFF report data…</span>
+    </div>
+
+    <div class="info-box">
+        <h3>ℹ️ Output Tabs:</h3>
+        <ul>
+            <li><strong>Tab 1 – Chapter 99 Entry Lines Only:</strong> Rows from the TARIFF report matching file numbers in your CSV</li>
+            <li><strong>Tab 2 – Chapter 99 Duty Summary:</strong> Pivot of Chapter 99 codes showing total Duty Paid &amp; Entered Value</li>
+            <li><strong>Tab 3 – All Entry Lines:</strong> Full EDI output with expanded ADL lines (original tool output)</li>
+        </ul>
+    </div>
+
+    <div class="tab-preview">
+        <span class="tab-badge">📋 Tab 1: Chapter 99 Entry Lines</span>
+        <span class="tab-badge">📊 Tab 2: Chapter 99 Duty Summary</span>
+        <span class="tab-badge">📄 Tab 3: All Entry Lines</span>
+    </div>
+
+    <!-- Single CSV upload -->
+    <div class="upload-area disabled" id="csvUploadArea">
+        <div class="upload-icon">📄</div>
+        <div class="upload-text">Click to select or drag &amp; drop your EDI CSV file</div>
+        <div class="upload-hint">Supports EDI CSV format</div>
+        <div class="upload-loaded-name" id="csvLoadedName"></div>
+        <input type="file" id="csvFileInput" accept=".csv">
+    </div>
+
+    <button class="btn btn-process" id="processBtn" onclick="processFiles()">⚙️ Generate 3-Tab Report</button>
+
+    <div class="progress-container" id="progressContainer">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill">0%</div>
+        </div>
+        <div class="progress-text" id="progressText">Processing…</div>
+    </div>
+
+    <div class="result-container" id="resultContainer">
+        <div class="success-icon">✅</div>
+        <div class="result-message" id="resultMessage"></div>
+        <div class="result-stats" id="resultStats"></div>
+        <button class="btn btn-download" onclick="downloadFile()">⬇️ Download XLSX Report</button>
+        <button class="btn btn-new" onclick="resetUI()">🔄 New Upload</button>
+    </div>
+
+    <div class="error-message" id="errorMessage"></div>
+</div>
+
+<script>
+    // ─── Constants ────────────────────────────────────────────────────────────
+    const TARIFF_FILENAME = 'TARIFF-report-cleaned.xlsx';
+
+    // ─── State ───────────────────────────────────────────────────────────────
+    let csvData           = null;
+    let tariffData        = null;
+    let tariffReady       = false;
+    let processedWorkbook = null;
+    let csvFileName       = '';
+
+    // ─── DOM refs ─────────────────────────────────────────────────────────────
+    const csvUploadArea     = document.getElementById('csvUploadArea');
+    const csvFileInput      = document.getElementById('csvFileInput');
+    const csvLoadedName     = document.getElementById('csvLoadedName');
+    const processBtn        = document.getElementById('processBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill      = document.getElementById('progressFill');
+    const progressText      = document.getElementById('progressText');
+    const resultContainer   = document.getElementById('resultContainer');
+    const resultMessage     = document.getElementById('resultMessage');
+    const resultStats       = document.getElementById('resultStats');
+    const errorMessage      = document.getElementById('errorMessage');
+    const tariffStatus      = document.getElementById('tariffStatus');
+    const tariffStatusText  = document.getElementById('tariffStatusText');
+    const tariffSpinner     = document.getElementById('tariffSpinner');
+
+    // ─── Load TARIFF xlsx from repo on page load ──────────────────────────────
+    async function loadTariffFile() {
+        try {
+            const response = await fetch(TARIFF_FILENAME);
+            if (!response.ok) throw new Error(`HTTP ${response.status} — file not found`);
+            const buffer = await response.arrayBuffer();
+            const wb = XLSX.read(new Uint8Array(buffer), {
+                type: 'array',
+                cellDates: true,
+                raw: true           // preserve raw numeric values, no cell-format rounding
+            });
+            tariffData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
+                header: 1,
+                defval: '',
+                raw: true           // keep full numeric precision
+            });
+
+            tariffReady = true;
+            tariffStatus.className  = 'tariff-status ready';
+            tariffSpinner.style.display = 'none';
+            tariffStatusText.textContent = `✔ TARIFF report loaded — ${(tariffData.length - 1).toLocaleString()} rows ready`;
+            csvUploadArea.classList.remove('disabled');
+            checkReady();
+        } catch (err) {
+            tariffStatus.className = 'tariff-status error';
+            tariffSpinner.style.display = 'none';
+            tariffStatusText.textContent = `⚠ Could not load ${TARIFF_FILENAME}: ${err.message}. Ensure the file is in the same folder as this HTML.`;
+        }
+    }
+    loadTariffFile();
+
+    // ─── CSV upload wiring ────────────────────────────────────────────────────
+    csvUploadArea.addEventListener('click', () => {
+        if (!csvUploadArea.classList.contains('loaded')) csvFileInput.click();
+    });
+    csvUploadArea.addEventListener('dragover', e => { e.preventDefault(); csvUploadArea.classList.add('dragover'); });
+    csvUploadArea.addEventListener('dragleave', () => csvUploadArea.classList.remove('dragover'));
+    csvUploadArea.addEventListener('drop', e => {
+        e.preventDefault();
+        csvUploadArea.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file && file.name.toLowerCase().endsWith('.csv')) loadCSV(file);
+        else showError('Please drop a .csv file.');
+    });
+    csvFileInput.addEventListener('change', e => { if (e.target.files[0]) loadCSV(e.target.files[0]); });
+
+    function loadCSV(file) {
+        csvFileName = file.name;
+        const reader = new FileReader();
+        reader.onload = e => {
+            csvData = e.target.result;
+            csvLoadedName.textContent = '✔ ' + file.name;
+            csvUploadArea.classList.add('loaded');
+            checkReady();
+        };
+        reader.readAsText(file);
+    }
+
+    function checkReady() {
+        if (csvData && tariffReady) processBtn.classList.add('ready');
+    }
+
+    // ─── Reset UI for a new upload ────────────────────────────────────────────
+    function resetUI() {
+        csvData           = null;
+        processedWorkbook = null;
+        csvFileName       = '';
+        csvFileInput.value            = '';
+        csvLoadedName.textContent     = '';
+        csvUploadArea.classList.remove('loaded', 'dragover');
+        processBtn.classList.remove('ready');
+        resultContainer.classList.remove('active');
+        progressContainer.classList.remove('active');
+        errorMessage.classList.remove('active');
+        updateProgress(0, '');
+    }
+
+    // ─── Progress ─────────────────────────────────────────────────────────────
+    function updateProgress(pct, text) {
+        progressFill.style.width = pct + '%';
+        progressFill.textContent = pct > 5 ? Math.round(pct) + '%' : '';
+        progressText.textContent = text;
+    }
+
+    function showError(msg) {
+        errorMessage.textContent = msg;
+        errorMessage.classList.add('active');
+        setTimeout(() => errorMessage.classList.remove('active'), 12000);
+    }
+
+    // ─── Robust CSV parser (handles quoted commas) ────────────────────────────
+    function parseCSVLine(line) {
+        const result = [];
+        let current = '', inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+                if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+                else inQuotes = !inQuotes;
+            } else if (ch === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += ch;
+            }
+        }
+        result.push(current.trim());
+        return result;
+    }
+
+    // ─── Main Processing ─────────────────────────────────────────────────────
+    function processFiles() {
+        try {
+            errorMessage.classList.remove('active');
+            resultContainer.classList.remove('active');
+            progressContainer.classList.add('active');
+            updateProgress(5, 'Parsing EDI CSV…');
+
+            // ── Parse CSV ────────────────────────────────────────────────────
+            const lines   = csvData.split('\n');
+            const headers = parseCSVLine(lines[0]);
+            const colMap  = {};
+            headers.forEach((h, i) => colMap[h.trim()] = i);
+
+            const requiredColumns = [
+                'BROKERREFERENCE','ENTRYNUMBER','COUNTRYOFEXPORT','DATEOFEXPORT',
+                'COUNTRYOFORIGIN','ENTRYDATE','MASTERBILLNUMBERS','MANUFACTURERNAME',
+                'HTS_DESCRIPTION','HTS_NUMBER','ENTEREDVALUE','ADVALOREMDUTYAMOUNT',
+                'INVOICENUMBER','LIQUIDATIONDATE'
+            ];
+            const missing = requiredColumns.filter(c => !colMap.hasOwnProperty(c));
+            if (missing.length > 0) {
+                progressContainer.classList.remove('active');
+                showError('CSV is missing required columns: ' + missing.join(', '));
+                return;
+            }
+
+            // Collect file numbers from CSV
+            updateProgress(15, 'Extracting file numbers from CSV…');
+            const fileNumbers = new Set();
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const vals = parseCSVLine(lines[i]);
+                const ref  = (vals[colMap['BROKERREFERENCE']] || '').trim();
+                if (ref) fileNumbers.add(ref);
+            }
+
+            // ── Tab 3: All Entry Lines (original EDI output) ─────────────────
+            updateProgress(22, 'Building Tab 3 – All Entry Lines…');
+
+            const outputColumns = [
+                'Broker Ref #','Entry #','Export Country','Export Date','Origin Country',
+                'Entry Date','Bill of Lading','Manufacturer Name','Tariff Description',
+                'HTS Code','Entered Value','Duty','Commercial Invoice Number','Liquidation Date'
+            ];
+            const columnMapping = {
+                'Broker Ref #':'BROKERREFERENCE','Entry #':'ENTRYNUMBER',
+                'Export Country':'COUNTRYOFEXPORT','Export Date':'DATEOFEXPORT',
+                'Origin Country':'COUNTRYOFORIGIN','Entry Date':'ENTRYDATE',
+                'Bill of Lading':'MASTERBILLNUMBERS','Manufacturer Name':'MANUFACTURERNAME',
+                'Tariff Description':'HTS_DESCRIPTION','HTS Code':'HTS_NUMBER',
+                'Entered Value':'ENTEREDVALUE','Duty':'ADVALOREMDUTYAMOUNT',
+                'Commercial Invoice Number':'INVOICENUMBER','Liquidation Date':'LIQUIDATIONDATE'
+            };
+
+            const tab3Data = [outputColumns];
+            let tab3TotalDuty = 0, tab3TotalEV = 0;
+
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const values = parseCSVLine(lines[i]);
+
+                const baseRow = {};
+                for (const [outCol, csvCol] of Object.entries(columnMapping)) {
+                    const idx = colMap[csvCol];
+                    baseRow[outCol] = idx !== undefined ? (values[idx] || '').trim() : '';
+                }
+                if (baseRow['Entry #'])
+                    baseRow['Entry #'] = 'EF4' + baseRow['Entry #'].replace(/[^0-9]/g, '');
+
+                tab3Data.push(outputColumns.map(col => baseRow[col]));
+
+                for (let adlNum = 1; adlNum <= 7; adlNum++) {
+                    const adlHtsIdx = colMap[`ADL${adlNum}_HTS_NUMBER`];
+                    if (adlHtsIdx === undefined) continue;
+                    const adlHts = (values[adlHtsIdx] || '').trim();
+                    if (!adlHts) continue;
+                    const adlDescIdx = colMap[`ADL${adlNum}_HTS_DESCRIPTION`];
+                    const adlDutyIdx = colMap[`ADL${adlNum}_DUTY`];
+                    tab3Data.push([
+                        baseRow['Broker Ref #'], baseRow['Entry #'],
+                        baseRow['Export Country'], baseRow['Export Date'],
+                        baseRow['Origin Country'], baseRow['Entry Date'],
+                        baseRow['Bill of Lading'], baseRow['Manufacturer Name'],
+                        adlDescIdx !== undefined ? (values[adlDescIdx] || '').trim() : '',
+                        adlHts, baseRow['Entered Value'],
+                        adlDutyIdx !== undefined ? (values[adlDutyIdx] || '').trim() : '',
+                        baseRow['Commercial Invoice Number'], baseRow['Liquidation Date']
+                    ]);
+                }
+                if (i % 50 === 0) updateProgress(22 + (i / lines.length) * 18, `Tab 3: row ${i}…`);
+            }
+
+            for (let i = 1; i < tab3Data.length; i++) {
+                const d = parseFloat((tab3Data[i][11] || '').toString().replace(/[,$]/g,''));
+                const v = parseFloat((tab3Data[i][10] || '').toString().replace(/[,$]/g,''));
+                if (!isNaN(d)) tab3TotalDuty += d;
+                if (!isNaN(v)) tab3TotalEV   += v;
+            }
+            const tab3Totals = Array(outputColumns.length).fill('');
+            tab3Totals[0] = 'TOTAL'; tab3Totals[10] = tab3TotalEV; tab3Totals[11] = tab3TotalDuty;
+            tab3Data.push(tab3Totals);
+
+            // ── Tab 1: Chapter 99 Entry Lines (matched from TARIFF xlsx) ─────
+            updateProgress(42, 'Building Tab 1 – Chapter 99 Entry Lines…');
+
+            const tariffHeaders = tariffData[0];
+            const tColMap = {};
+            tariffHeaders.forEach((h, i) => { if (h !== '') tColMap[String(h).trim()] = i; });
+
+            const tab1Headers = [
+                'IFF REF #','Entry Number','Entry Date','Line #','HTS Number',
+                'Chapter 99 #','Chapter 99 Description','COO','Duty Paid','Line Entered Value','Invoice #'
+            ];
+            const tariffColMapping = {
+                'IFF REF #':              'IFF Ref Number',
+                'Entry Number':           'Entry Number',
+                'Entry Date':             'Entry Date',
+                'Line #':                 'Line #',
+                'HTS Number':             'HTS Number',
+                'Chapter 99 #':           'Chapter 99 #',
+                'Chapter 99 Description': 'Chapter 99 Description',
+                'COO':                    'COO',
+                'Duty Paid':              'Duty Paid',
+                'Line Entered Value':     'Line Entered Value',
+                'Invoice #':              'Invoice #'
+            };
+
+            const tab1Data = [tab1Headers];
+            let tab1TotalDuty = 0, tab1TotalEV = 0;
+
+            for (let i = 1; i < tariffData.length; i++) {
+                const row = tariffData[i];
+                if (!row || !row.some(v => v !== '')) continue;
+
+                const iffRef = String(row[tColMap['IFF Ref Number']] ?? '').trim();
+                if (!fileNumbers.has(iffRef)) continue;
+
+                const ch99 = String(row[tColMap['Chapter 99 #']] ?? '').trim();
+                if (!ch99) continue;
+
+                const outRow = tab1Headers.map(h => {
+                    const colIdx = tColMap[tariffColMapping[h]];
+                    if (colIdx === undefined) return '';
+                    const val = row[colIdx];
+                    // Format Date objects; keep numbers as numbers for full precision
+                    if (val instanceof Date) {
+                        const m = val.getMonth() + 1, d = val.getDate(), y = val.getFullYear();
+                        return `${String(m).padStart(2,'0')}/${String(d).padStart(2,'0')}/${y}`;
+                    }
+                    return (val !== undefined && val !== null) ? val : '';
+                });
+
+                tab1Data.push(outRow);
+
+                // Accumulate without converting numbers through strings
+                const duty = typeof outRow[8] === 'number' ? outRow[8] : parseFloat(String(outRow[8]).replace(/[,$]/g,''));
+                const ev   = typeof outRow[9] === 'number' ? outRow[9] : parseFloat(String(outRow[9]).replace(/[,$]/g,''));
+                if (!isNaN(duty)) tab1TotalDuty += duty;
+                if (!isNaN(ev))   tab1TotalEV   += ev;
+
+                if (i % 500 === 0) updateProgress(42 + (i / tariffData.length) * 22, `Tab 1: row ${i}…`);
+            }
+
+            const tab1Totals = Array(tab1Headers.length).fill('');
+            tab1Totals[0] = 'TOTAL'; tab1Totals[8] = tab1TotalDuty; tab1Totals[9] = tab1TotalEV;
+            tab1Data.push(tab1Totals);
+
+            // ── Tab 2: Chapter 99 Duty Summary (pivot) ───────────────────────
+            updateProgress(67, 'Building Tab 2 – Chapter 99 Duty Summary…');
+
+            const pivotMap = new Map();
+            for (let i = 1; i < tab1Data.length - 1; i++) {
+                const row  = tab1Data[i];
+                const code = String(row[5] || '').trim();
+                const desc = String(row[6] || '').trim();
+                if (!code) continue;
+                const key  = code + '|' + desc;
+                const duty = typeof row[8] === 'number' ? row[8] : parseFloat(String(row[8]).replace(/[,$]/g,'')) || 0;
+                const ev   = typeof row[9] === 'number' ? row[9] : parseFloat(String(row[9]).replace(/[,$]/g,'')) || 0;
+                if (!pivotMap.has(key)) pivotMap.set(key, { code, desc, duty: 0, ev: 0, lineCount: 0 });
+                const e = pivotMap.get(key);
+                e.duty += duty; e.ev += ev; e.lineCount++;
+            }
+
+            const pivotSorted = [...pivotMap.values()].sort((a, b) => b.duty - a.duty);
+            const tab2Headers = ['Chapter 99 #','Chapter 99 Description','Line Count','Duty Paid','Line Entered Value'];
+            const tab2Data    = [tab2Headers];
+            let tab2TotalDuty = 0, tab2TotalEV = 0, tab2TotalLines = 0;
+            for (const p of pivotSorted) {
+                tab2Data.push([p.code, p.desc, p.lineCount, p.duty, p.ev]);
+                tab2TotalDuty += p.duty; tab2TotalEV += p.ev; tab2TotalLines += p.lineCount;
+            }
+            tab2Data.push(['TOTAL', '', tab2TotalLines, tab2TotalDuty, tab2TotalEV]);
+
+            updateProgress(78, 'Creating Excel workbook…');
+
+            // ── Style helpers ─────────────────────────────────────────────────
+            const BLUE  = '4472C4', GREEN = '375623', PURP = '7030A0';
+            const GOLD  = 'FFD966', LGRAY = 'F2F2F2', WHITE = 'FFFFFF';
+
+            function thinBorder() {
+                const s = { style: 'thin', color: { rgb: 'D0D0D0' } };
+                return { top: s, bottom: s, left: s, right: s };
+            }
+
+            /**
+             * currencyColIndices : formatted as $#,##0.00
+             * decimalColIndices  : formatted as #,##0.00 (no dollar sign; preserves exact decimal value)
+             */
+            function applySheetStyle(ws, currencyColIndices, decimalColIndices, headerColor) {
+                const range   = XLSX.utils.decode_range(ws['!ref']);
+                const lastRow = range.e.r;
+                decimalColIndices = decimalColIndices || [];
+
+                for (let R = range.s.r; R <= range.e.r; R++) {
+                    for (let C = range.s.c; C <= range.e.c; C++) {
+                        const addr = XLSX.utils.encode_cell({ r: R, c: C });
+                        if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+
+                        const isHeader = R === 0;
+                        const isTotals = R === lastRow;
+                        const isCurr   = currencyColIndices.includes(C);
+                        const isDec    = decimalColIndices.includes(C);
+
+                        ws[addr].s = {
+                            alignment: {
+                                vertical:   'center',
+                                horizontal: (isCurr || isDec) ? 'right' : (isHeader ? 'center' : 'left'),
+                                wrapText:   true
+                            },
+                            border: thinBorder(),
+                            ...(isHeader ? {
+                                font: { bold: true, color: { rgb: WHITE } },
+                                fill: { fgColor: { rgb: headerColor } }
+                            } : isTotals ? {
+                                font: { bold: true },
+                                fill: { fgColor: { rgb: GOLD } }
+                            } : {
+                                fill: { fgColor: { rgb: R % 2 === 0 ? LGRAY : WHITE } }
+                            })
+                        };
+
+                        // Apply number format — preserve full precision by using number directly
+                        if ((isCurr || isDec) && !isHeader) {
+                            const raw = ws[addr].v;
+                            if (raw !== '' && raw !== null && raw !== undefined) {
+                                const num = typeof raw === 'number'
+                                    ? raw
+                                    : parseFloat(String(raw).replace(/[,$]/g, ''));
+                                if (!isNaN(num)) {
+                                    ws[addr].t = 'n';
+                                    ws[addr].v = num;
+                                    // Use $ format for duty; plain decimal format for Entered Value
+                                    ws[addr].z = isCurr ? '$#,##0.00' : '#,##0.00';
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Build Worksheet 1 (Tab 1) ─────────────────────────────────────
+            // col 8 = Duty Paid ($), col 9 = Line Entered Value (exact decimal)
+            const ws1 = XLSX.utils.aoa_to_sheet(tab1Data);
+            applySheetStyle(ws1, [8], [9], BLUE);
+            ws1['!cols'] = [
+                { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 6 },
+                { wch: 14 }, { wch: 12 }, { wch: 32 }, { wch: 6 },
+                { wch: 14 }, { wch: 18 }, { wch: 12 }
+            ];
+            ws1['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:tab1Data.length-2, c:tab1Headers.length-1} }) };
+
+            // ── Build Worksheet 2 (Tab 2) ─────────────────────────────────────
+            // col 3 = Duty Paid ($), col 4 = Line Entered Value (exact decimal)
+            const ws2 = XLSX.utils.aoa_to_sheet(tab2Data);
+            applySheetStyle(ws2, [3], [4], GREEN);
+            // Line Count = plain integer
+            const ws2Range = XLSX.utils.decode_range(ws2['!ref']);
+            for (let R = 1; R <= ws2Range.e.r; R++) {
+                const addr = XLSX.utils.encode_cell({ r: R, c: 2 });
+                if (ws2[addr] && ws2[addr].v !== '' && !isNaN(Number(ws2[addr].v)))
+                    ws2[addr].t = 'n';
+            }
+            ws2['!cols'] = [{ wch: 14 }, { wch: 38 }, { wch: 12 }, { wch: 16 }, { wch: 20 }];
+
+            // ── Build Worksheet 3 (Tab 3) ─────────────────────────────────────
+            const ws3 = XLSX.utils.aoa_to_sheet(tab3Data);
+            applySheetStyle(ws3, [10, 11], [], PURP);
+            ws3['!cols'] = [
+                { wch: 12 }, { wch: 14 }, { wch: 8 }, { wch: 12 },
+                { wch: 8 }, { wch: 12 }, { wch: 20 }, { wch: 25 },
+                { wch: 40 }, { wch: 12 }, { wch: 14 }, { wch: 12 },
+                { wch: 20 }, { wch: 12 }
+            ];
+            ws3['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:tab3Data.length-2, c:outputColumns.length-1} }) };
+
+            updateProgress(92, 'Assembling workbook…');
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws1, 'Chapter 99 Entry Lines Only');
+            XLSX.utils.book_append_sheet(wb, ws2, 'Chapter 99 Duty Summary');
+            XLSX.utils.book_append_sheet(wb, ws3, 'All Entry Lines');
+            processedWorkbook = wb;
+
+            updateProgress(100, 'Complete!');
+
+            setTimeout(() => {
+                progressContainer.classList.remove('active');
+                resultContainer.classList.add('active');
+                resultStats.innerHTML = `
+                    <div class="stat-box">
+                        <div class="stat-num">${(tab1Data.length - 2).toLocaleString()}</div>
+                        <div class="stat-label">Chapter 99 Lines Matched</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num">${pivotSorted.length}</div>
+                        <div class="stat-label">Unique Chapter 99 Codes</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num">${(tab3Data.length - 2).toLocaleString()}</div>
+                        <div class="stat-label">Total EDI Lines (Tab 3)</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num">$${tab1TotalDuty.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                        <div class="stat-label">Tab 1 Total Duty Paid</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num">$${tab1TotalEV.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                        <div class="stat-label">Tab 1 Total Entered Value</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num">${fileNumbers.size.toLocaleString()}</div>
+                        <div class="stat-label">Unique File #s in CSV</div>
+                    </div>
+                `;
+                resultMessage.textContent = `3-tab workbook ready — ${(tab1Data.length - 2).toLocaleString()} Chapter 99 lines matched across ${fileNumbers.size} file numbers.`;
+            }, 400);
+
+        } catch (err) {
+            progressContainer.classList.remove('active');
+            showError('Error processing files: ' + err.message);
+            console.error(err);
+        }
+    }
+
+    function downloadFile() {
+        try {
+            const baseName = csvFileName.replace(/\.csv$/i, '');
+            XLSX.writeFile(processedWorkbook, `${baseName}_TARIFF_REPORT.xlsx`);
+        } catch (err) {
+            showError('Download error: ' + err.message);
+        }
+    }
+</script>
+</body>
+</html>
