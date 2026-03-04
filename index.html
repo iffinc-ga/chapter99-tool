@@ -531,7 +531,21 @@
                 e.duty += duty; e.ev += ev; e.lineCount++;
             }
 
-            const pivotSorted = [...pivotMap.values()].sort((a, b) => b.duty - a.duty);
+            // Sort: IEEPA Fentanyl → IEEPA Reciprocal → IEEPA Fentanyl Exclusion → IEEPA Reciprocal Exclusion → everything else
+            // Within each group, sort by duty descending
+            function getGroupPriority(desc) {
+                const d = (desc || '').trim();
+                if (d === 'IEEPA Fentanyl')           return 0;
+                if (d === 'IEEPA Reciprocal')          return 1;
+                if (d === 'IEEPA Fentanyl Exclusion')  return 2;
+                if (d === 'IEEPA Reciprocal Exclusion') return 3;
+                return 4;
+            }
+            const pivotSorted = [...pivotMap.values()].sort((a, b) => {
+                const gA = getGroupPriority(a.desc), gB = getGroupPriority(b.desc);
+                if (gA !== gB) return gA - gB;
+                return b.duty - a.duty;
+            });
             const tab2Headers = ['Chapter 99 #','Chapter 99 Description','Line Count','Duty Paid','Line Entered Value'];
             const tab2Data    = [tab2Headers];
             let tab2TotalDuty = 0, tab2TotalEV = 0, tab2TotalLines = 0;
@@ -631,6 +645,7 @@
                     ws2[addr].t = 'n';
             }
             ws2['!cols'] = [{ wch: 14 }, { wch: 38 }, { wch: 12 }, { wch: 16 }, { wch: 20 }];
+            ws2['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:tab2Data.length-2, c:tab2Headers.length-1} }) };
 
             // ── Build Worksheet 3 (Tab 3) ─────────────────────────────────────
             const ws3 = XLSX.utils.aoa_to_sheet(tab3Data);
