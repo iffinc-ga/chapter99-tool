@@ -168,7 +168,7 @@
     <div class="info-box">
         <h3>ℹ️ Output Tabs:</h3>
         <ul>
-            <li><strong>Tab 1 – Chapter 99 Entry Lines Only:</strong> Rows from the TARIFF report matching file numbers in your CSV</li>
+            <li><strong>Tab 1 – Chapter 99 Entry Lines Only:</strong> Rows with Chapter 99 ADL codes (HTS starting with 99) extracted directly from your CSV</li>
             <li><strong>Tab 2 – Chapter 99 Duty Summary:</strong> Pivot of Chapter 99 codes showing total Duty Paid &amp; Entered Value</li>
             <li><strong>Tab 3 – All Entry Lines:</strong> Full EDI output with expanded ADL lines (original tool output)</li>
         </ul>
@@ -181,7 +181,7 @@
     </div>
 
     <!-- Single CSV upload -->
-    <div class="upload-area disabled" id="csvUploadArea">
+    <div class="upload-area" id="csvUploadArea">
         <div class="upload-icon">📄</div>
         <div class="upload-text">Click to select or drag &amp; drop your EDI CSV file</div>
         <div class="upload-hint">Supports EDI CSV format</div>
@@ -236,33 +236,22 @@
     const tariffStatusText  = document.getElementById('tariffStatusText');
     const tariffSpinner     = document.getElementById('tariffSpinner');
 
-    // ─── Load TARIFF xlsx from repo on page load ──────────────────────────────
+    // ─── Load TARIFF xlsx from repo on page load (optional — Tab 1 now built from CSV ADL columns) ──
     async function loadTariffFile() {
         try {
             const response = await fetch(TARIFF_FILENAME);
-            if (!response.ok) throw new Error(`HTTP ${response.status} — file not found`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const buffer = await response.arrayBuffer();
-            const wb = XLSX.read(new Uint8Array(buffer), {
-                type: 'array',
-                cellDates: true,
-                raw: true           // preserve raw numeric values, no cell-format rounding
-            });
-            tariffData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
-                header: 1,
-                defval: '',
-                raw: true           // keep full numeric precision
-            });
-
+            const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true, raw: true });
+            tariffData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: true });
             tariffReady = true;
-            tariffStatus.className  = 'tariff-status ready';
+            tariffStatus.className = 'tariff-status ready';
             tariffSpinner.style.display = 'none';
-            tariffStatusText.textContent = `✔ TARIFF report loaded — ${(tariffData.length - 1).toLocaleString()} rows ready`;
-            csvUploadArea.classList.remove('disabled');
-            checkReady();
+            tariffStatusText.textContent = `✔ TARIFF database loaded (${(tariffData.length - 1).toLocaleString()} rows) — Chapter 99 codes read from CSV ADL columns`;
         } catch (err) {
-            tariffStatus.className = 'tariff-status error';
+            tariffStatus.className = 'tariff-status ready';
             tariffSpinner.style.display = 'none';
-            tariffStatusText.textContent = `⚠ Could not load ${TARIFF_FILENAME}: ${err.message}. Ensure the file is in the same folder as this HTML.`;
+            tariffStatusText.textContent = `ℹ Chapter 99 codes read directly from CSV ADL columns`;
         }
     }
     loadTariffFile();
@@ -295,7 +284,7 @@
     }
 
     function checkReady() {
-        if (csvData && tariffReady) processBtn.classList.add('ready');
+        if (csvData) processBtn.classList.add('ready');
     }
 
     // ─── Reset UI for a new upload ────────────────────────────────────────────
@@ -449,70 +438,64 @@
             tab3Totals[0] = 'TOTAL'; tab3Totals[10] = tab3TotalEV; tab3Totals[11] = tab3TotalDuty;
             tab3Data.push(tab3Totals);
 
-            // ── Tab 1: Chapter 99 Entry Lines (matched from TARIFF xlsx) ─────
+            // ── Tab 1: Chapter 99 Entry Lines (built from CSV ADL columns) ──────
             updateProgress(42, 'Building Tab 1 – Chapter 99 Entry Lines…');
-
-            const tariffHeaders = tariffData[0];
-            const tColMap = {};
-            tariffHeaders.forEach((h, i) => { if (h !== '') tColMap[String(h).trim()] = i; });
 
             const tab1Headers = [
                 'IFF REF #','Entry Number','Entry Date','Line #','HTS Number',
                 'Chapter 99 #','Chapter 99 Description','COO','Duty Paid','Line Entered Value','Invoice #'
             ];
-            const tariffColMapping = {
-                'IFF REF #':              'IFF Ref Number',
-                'Entry Number':           'Entry Number',
-                'Entry Date':             'Entry Date',
-                'Line #':                 'Line #',
-                'HTS Number':             'HTS Number',
-                'Chapter 99 #':           'Chapter 99 #',
-                'Chapter 99 Description': 'Chapter 99 Description',
-                'COO':                    'COO',
-                'Duty Paid':              'Duty Paid',
-                'Line Entered Value':     'Line Entered Value',
-                'Invoice #':              'Invoice #'
-            };
 
             const tab1Data = [tab1Headers];
             let tab1TotalDuty = 0, tab1TotalEV = 0;
 
-            for (let i = 1; i < tariffData.length; i++) {
-                const row = tariffData[i];
-                if (!row || !row.some(v => v !== '')) continue;
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const values = parseCSVLine(lines[i]);
 
-                const iffRef = String(row[tColMap['IFF Ref Number']] ?? '').trim();
-                if (!fileNumbers.has(iffRef)) continue;
+                const brokerRef  = (values[colMap['BROKERREFERENCE']] || '').trim();
+                const rawEntry   = (values[colMap['ENTRYNUMBER']] || '').trim();
+                const entryNum   = rawEntry ? 'EF4' + rawEntry.replace(/[^0-9]/g, '') : '';
+                const entryDate  = (values[colMap['ENTRYDATE']] || '').trim();
+                const lineNum    = (values[colMap['LINENUMBER']] || '').trim();
+                const htsNumber  = (values[colMap['HTS_NUMBER']] || '').trim();
+                const coo        = (values[colMap['COUNTRYOFORIGIN']] || '').trim();
+                const enteredVal = (values[colMap['ENTEREDVALUE']] || '').trim();
+                const invoiceNum = (values[colMap['INVOICENUMBER']] || '').trim();
 
-                const ch99 = String(row[tColMap['Chapter 99 #']] ?? '').trim();
-                if (!ch99) continue;
+                for (let adlNum = 1; adlNum <= 7; adlNum++) {
+                    const adlHtsIdx = colMap[`ADL${adlNum}_HTS_NUMBER`];
+                    if (adlHtsIdx === undefined) continue;
+                    const adlHts = (values[adlHtsIdx] || '').trim();
+                    if (!adlHts || !adlHts.startsWith('99')) continue;
 
-                const outRow = tab1Headers.map(h => {
-                    const colIdx = tColMap[tariffColMapping[h]];
-                    if (colIdx === undefined) return '';
-                    const val = row[colIdx];
-                    // Format Date objects; keep numbers as numbers for full precision
-                    if (val instanceof Date) {
-                        const m = val.getMonth() + 1, d = val.getDate(), y = val.getFullYear();
-                        return `${String(m).padStart(2,'0')}/${String(d).padStart(2,'0')}/${y}`;
-                    }
-                    return (val !== undefined && val !== null) ? val : '';
-                });
+                    const adlDescIdx = colMap[`ADL${adlNum}_HTS_DESCRIPTION`];
+                    const adlDutyIdx = colMap[`ADL${adlNum}_DUTY`];
+                    const adlDesc    = adlDescIdx !== undefined ? (values[adlDescIdx] || '').trim() : '';
+                    const adlDutyRaw = adlDutyIdx !== undefined ? (values[adlDutyIdx] || '').trim() : '';
 
-                tab1Data.push(outRow);
+                    const duty = parseFloat(adlDutyRaw.replace(/[,$]/g, ''));
+                    const ev   = parseFloat(enteredVal.replace(/[,$]/g, ''));
 
-                // Accumulate without converting numbers through strings
-                const duty = typeof outRow[8] === 'number' ? outRow[8] : parseFloat(String(outRow[8]).replace(/[,$]/g,''));
-                const ev   = typeof outRow[9] === 'number' ? outRow[9] : parseFloat(String(outRow[9]).replace(/[,$]/g,''));
-                if (!isNaN(duty)) tab1TotalDuty += duty;
-                if (!isNaN(ev))   tab1TotalEV   += ev;
+                    tab1Data.push([
+                        brokerRef, entryNum, entryDate, lineNum, htsNumber,
+                        adlHts, adlDesc, coo,
+                        isNaN(duty) ? adlDutyRaw : duty,
+                        isNaN(ev)   ? enteredVal : ev,
+                        invoiceNum
+                    ]);
 
-                if (i % 500 === 0) updateProgress(42 + (i / tariffData.length) * 22, `Tab 1: row ${i}…`);
+                    if (!isNaN(duty)) tab1TotalDuty += duty;
+                    if (!isNaN(ev))   tab1TotalEV   += ev;
+                }
+
+                if (i % 50 === 0) updateProgress(42 + (i / lines.length) * 22, `Tab 1: row ${i}…`);
             }
 
             const tab1Totals = Array(tab1Headers.length).fill('');
             tab1Totals[0] = 'TOTAL'; tab1Totals[8] = tab1TotalDuty; tab1Totals[9] = tab1TotalEV;
             tab1Data.push(tab1Totals);
+
 
             // ── Tab 2: Chapter 99 Duty Summary (pivot) ───────────────────────
             updateProgress(67, 'Building Tab 2 – Chapter 99 Duty Summary…');
