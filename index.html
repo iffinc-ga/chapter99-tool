@@ -558,29 +558,50 @@
                 const coo        = (values[colMap['COUNTRYOFORIGIN']] || '').trim();
                 const enteredVal = (values[colMap['ENTEREDVALUE']] || '').trim();
                 const invoiceNum = (values[colMap['INVOICENUMBER']] || '').trim();
+                const baseduty   = (values[colMap['ADVALOREMDUTYAMOUNT']] || '').trim();
 
+                // Pattern 1: HTS_NUMBER itself is the Chapter 99 code
+                // (e.g. 99030220, 99030125). The commodity HTS is in ADL1.
+                // Duty comes from ADVALOREMDUTYAMOUNT on this line.
+                if (htsNumber.startsWith('99')) {
+                    const ch99     = htsNumber;
+                    const ch99Desc = CH99_DESC[ch99] || (values[colMap['HTS_DESCRIPTION']] || '').trim();
+                    const adl1Hts  = (values[colMap['ADL1_HTS_NUMBER']] || '').trim();
+                    const commodityHts = (adl1Hts && !adl1Hts.startsWith('99')) ? adl1Hts : '';
+                    const duty = parseFloat(baseduty.replace(/[,$]/g, ''));
+                    const ev   = parseFloat(enteredVal.replace(/[,$]/g, ''));
+                    tab1Data.push([
+                        brokerRef, entryNum, entryDate, lineNum, commodityHts,
+                        ch99, ch99Desc, coo,
+                        isNaN(duty) ? baseduty : duty,
+                        isNaN(ev)   ? enteredVal : ev,
+                        invoiceNum
+                    ]);
+                    if (!isNaN(duty)) tab1TotalDuty += duty;
+                    if (!isNaN(ev))   tab1TotalEV   += ev;
+                }
+
+                // Pattern 2: Chapter 99 code is in an ADL column.
+                // The base HTS is the commodity; the ADL carries the ch99 supplemental.
+                // Duty comes from ADL#_DUTY.
                 for (let adlNum = 1; adlNum <= 7; adlNum++) {
                     const adlHtsIdx = colMap[`ADL${adlNum}_HTS_NUMBER`];
                     if (adlHtsIdx === undefined) continue;
                     const adlHts = (values[adlHtsIdx] || '').trim();
                     if (!adlHts || !adlHts.startsWith('99')) continue;
 
-                    const adlDescIdx = colMap[`ADL${adlNum}_HTS_DESCRIPTION`];
                     const adlDutyIdx = colMap[`ADL${adlNum}_DUTY`];
-                    const adlDesc    = CH99_DESC[adlHts] || (adlDescIdx !== undefined ? (values[adlDescIdx] || '').trim() : adlHts);
+                    const ch99Desc   = CH99_DESC[adlHts] || (values[colMap[`ADL${adlNum}_HTS_DESCRIPTION`]] || '').trim();
                     const adlDutyRaw = adlDutyIdx !== undefined ? (values[adlDutyIdx] || '').trim() : '';
-
                     const duty = parseFloat(adlDutyRaw.replace(/[,$]/g, ''));
                     const ev   = parseFloat(enteredVal.replace(/[,$]/g, ''));
-
                     tab1Data.push([
                         brokerRef, entryNum, entryDate, lineNum, htsNumber,
-                        adlHts, adlDesc, coo,
+                        adlHts, ch99Desc, coo,
                         isNaN(duty) ? adlDutyRaw : duty,
                         isNaN(ev)   ? enteredVal : ev,
                         invoiceNum
                     ]);
-
                     if (!isNaN(duty)) tab1TotalDuty += duty;
                     if (!isNaN(ev))   tab1TotalEV   += ev;
                 }
