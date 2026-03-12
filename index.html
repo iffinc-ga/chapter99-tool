@@ -168,18 +168,18 @@
     <div class="info-box">
         <h3>ℹ️ Output Tabs:</h3>
         <ul>
+            <li><strong>Tab 1 – IEEPA Entry List:</strong> One row per entry where IEEPA Reciprocal, IEEPA Fentanyl, IEEPA Brazil, or IEEPA India (Russian Oil) duty > $0 — IFF Ref #, Entry #, Entry Date, IEEPA tariff types, and total duty paid</li>
             <li><strong>Tab 2 – CHAPTER 99 Entry Lines Only:</strong> Rows with Chapter 99 ADL codes (HTS starting with 99) extracted directly from your CSV</li>
             <li><strong>Tab 3 – CHAPTER 99 Duty Summary:</strong> Pivot of Chapter 99 codes showing total Duty Paid &amp; Entered Value</li>
             <li><strong>Tab 4 – ALL ENTRY LINES:</strong> Full EDI output with expanded ADL lines (original tool output)</li>
-            <li><strong>Tab 1 – IEEPA Entry List:</strong> One row per entry where IEEPA Reciprocal or IEEPA Fentanyl duty > $0 — IFF Ref #, Entry #, Entry Date, IEEPA tariff types, and total duty paid</li>
         </ul>
     </div>
 
     <div class="tab-preview">
+        <span class="tab-badge">🧾 Tab 1: IEEPA Entry List</span>
         <span class="tab-badge">📋 Tab 2: CHAPTER 99 Entry Lines Only</span>
         <span class="tab-badge">📊 Tab 3: CHAPTER 99 Duty Summary</span>
         <span class="tab-badge">📄 Tab 4: ALL ENTRY LINES</span>
-        <span class="tab-badge">🧾 Tab 1: IEEPA Entry List</span>
     </div>
 
     <!-- Single CSV upload -->
@@ -355,12 +355,12 @@
         '99030133': 'IEEPA Reciprocal Exclusion',
         '99030134': 'IEEPA Reciprocal Exclusion',
         '99030163': 'IEEPA Reciprocal',
-        '99030177': 'IEEPA Reciprocal',
-        '99030182': 'IEEPA Reciprocal Exclusion',
+        '99030177': 'IEEPA Brazil',
+        '99030182': 'IEEPA Brazil Exclusion',
         '99030183': 'IEEPA Reciprocal Exclusion',
-        '99030184': 'IEEPA Reciprocal',
-        '99030185': 'IEEPA Reciprocal Exclusion',
-        '99030186': 'IEEPA Reciprocal Exclusion',
+        '99030184': 'IEEPA India (Russian Oil)',
+        '99030185': 'IEEPA India (Russian Oil) Exclusion',
+        '99030186': 'IEEPA India (Russian Oil) Exclusion',
         '99030187': 'IEEPA Reciprocal Exclusion',
         '99030207': 'IEEPA Reciprocal',
         '99030209': 'IEEPA Reciprocal',
@@ -637,11 +637,15 @@
             // Within each group, sort by duty descending
             function getGroupPriority(desc) {
                 const d = (desc || '').trim();
-                if (d === 'IEEPA Fentanyl')           return 0;
-                if (d === 'IEEPA Reciprocal')          return 1;
-                if (d === 'IEEPA Fentanyl Exclusion')  return 2;
-                if (d === 'IEEPA Reciprocal Exclusion') return 3;
-                return 4;
+                if (d === 'IEEPA Fentanyl')                       return 0;
+                if (d === 'IEEPA Reciprocal')                      return 1;
+                if (d === 'IEEPA Brazil')                          return 2;
+                if (d === 'IEEPA India (Russian Oil)')             return 3;
+                if (d === 'IEEPA Fentanyl Exclusion')              return 4;
+                if (d === 'IEEPA Reciprocal Exclusion')            return 5;
+                if (d === 'IEEPA Brazil Exclusion')                return 6;
+                if (d === 'IEEPA India (Russian Oil) Exclusion')   return 7;
+                return 8;
             }
             const pivotSorted = [...pivotMap.values()].sort((a, b) => {
                 const gA = getGroupPriority(a.desc), gB = getGroupPriority(b.desc);
@@ -668,7 +672,7 @@
             for (let i = 1; i < tab1Data.length - 1; i++) {
                 const row   = tab1Data[i];
                 const desc  = String(row[6] || '').trim();
-                if (desc !== 'IEEPA Reciprocal' && desc !== 'IEEPA Fentanyl') continue;
+                if (desc !== 'IEEPA Reciprocal' && desc !== 'IEEPA Fentanyl' && desc !== 'IEEPA Brazil' && desc !== 'IEEPA India (Russian Oil)') continue;
 
                 const key       = row[0] + '|' + row[1] + '|' + row[2]; // iffRef|entryNum|entryDate
                 const dutyVal   = typeof row[8] === 'number' ? row[8] : parseFloat(String(row[8]).replace(/[,$]/g,'')) || 0;
