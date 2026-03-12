@@ -157,7 +157,7 @@
 <body>
 <div class="container">
     <h1>📊 IEEPA Tariff Report Processor</h1>
-    <p class="subtitle">Upload your EDI CSV to generate a 3-tab Excel report</p>
+    <p class="subtitle">Upload your EDI CSV to generate a 4-tab Excel report</p>
 
     <!-- TARIFF file load status -->
     <div class="tariff-status loading" id="tariffStatus">
@@ -171,6 +171,7 @@
             <li><strong>Tab 1 – Chapter 99 Entry Lines Only:</strong> Rows with Chapter 99 ADL codes (HTS starting with 99) extracted directly from your CSV</li>
             <li><strong>Tab 2 – Chapter 99 Duty Summary:</strong> Pivot of Chapter 99 codes showing total Duty Paid &amp; Entered Value</li>
             <li><strong>Tab 3 – All Entry Lines:</strong> Full EDI output with expanded ADL lines (original tool output)</li>
+            <li><strong>Tab 4 – IEEPA Entries:</strong> One row per entry where IEEPA Reciprocal or IEEPA Fentanyl duty > $0 — IFF Ref #, Entry #, Entry Date, IEEPA tariff types, and total duty paid</li>
         </ul>
     </div>
 
@@ -178,6 +179,7 @@
         <span class="tab-badge">📋 Tab 1: Chapter 99 Entry Lines</span>
         <span class="tab-badge">📊 Tab 2: Chapter 99 Duty Summary</span>
         <span class="tab-badge">📄 Tab 3: All Entry Lines</span>
+        <span class="tab-badge">🧾 Tab 4: IEEPA Entries</span>
     </div>
 
     <!-- Single CSV upload -->
@@ -189,7 +191,7 @@
         <input type="file" id="csvFileInput" accept=".csv">
     </div>
 
-    <button class="btn btn-process" id="processBtn" onclick="processFiles()">⚙️ Generate 3-Tab Report</button>
+    <button class="btn btn-process" id="processBtn" onclick="processFiles()">⚙️ Generate 4-Tab Report</button>
 
     <div class="progress-container" id="progressContainer">
         <div class="progress-bar">
@@ -655,6 +657,53 @@
             }
             tab2Data.push(['TOTAL', '', tab2TotalLines, tab2TotalDuty, tab2TotalEV]);
 
+
+            // ── Tab 4: IEEPA Entries (one row per entry, Reciprocal/Fentanyl duty > $0) ─
+            updateProgress(72, 'Building Tab 4 – IEEPA Entries…');
+
+            // Only include lines whose Chapter 99 Description contains "IEEPA"
+            // Group by (brokerRef | entryNum | entryDate), collect unique IEEPA
+            // descriptions, sum duties. Exclude entries where total duty = $0.
+            const entryMap = new Map();
+            for (let i = 1; i < tab1Data.length - 1; i++) {
+                const row   = tab1Data[i];
+                const desc  = String(row[6] || '').trim();
+                if (desc !== 'IEEPA Reciprocal' && desc !== 'IEEPA Fentanyl') continue;
+
+                const key       = row[0] + '|' + row[1] + '|' + row[2]; // iffRef|entryNum|entryDate
+                const dutyVal   = typeof row[8] === 'number' ? row[8] : parseFloat(String(row[8]).replace(/[,$]/g,'')) || 0;
+
+                if (!entryMap.has(key)) {
+                    entryMap.set(key, { iffRef: row[0], entryNum: row[1], entryDate: row[2], descs: new Set(), duty: 0 });
+                }
+                const e = entryMap.get(key);
+                if (desc) e.descs.add(desc);
+                e.duty += dutyVal;
+            }
+
+            // Filter out entries with $0 total IEEPA duty, then sort by entryDate asc
+            const tab4Headers = ['IFF REF #', 'Entry Number', 'Entry Date', 'Chapter 99 Description (IEEPA Tariffs)', 'Total IEEPA Duty Paid'];
+            const tab4Rows = [...entryMap.values()]
+                .filter(e => e.duty > 0)
+                .sort((a, b) => {
+                    // Sort by entry date ascending
+                    const da = new Date(a.entryDate), db = new Date(b.entryDate);
+                    if (!isNaN(da) && !isNaN(db) && da - db !== 0) return da - db;
+                    return a.entryNum.localeCompare(b.entryNum);
+                });
+
+            const tab4Data = [tab4Headers];
+            let tab4TotalDuty = 0;
+            for (const e of tab4Rows) {
+                // Join multiple IEEPA descriptions with " / "
+                const descStr = [...e.descs].sort().join(' / ');
+                tab4Data.push([e.iffRef, e.entryNum, e.entryDate, descStr, e.duty]);
+                tab4TotalDuty += e.duty;
+            }
+            const tab4Totals = Array(tab4Headers.length).fill('');
+            tab4Totals[0] = 'TOTAL'; tab4Totals[4] = tab4TotalDuty;
+            tab4Data.push(tab4Totals);
+
             updateProgress(78, 'Creating Excel workbook…');
 
             // ── Style helpers ─────────────────────────────────────────────────
@@ -758,12 +807,25 @@
             ];
             ws3['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:tab3Data.length-2, c:outputColumns.length-1} }) };
 
+
+            // ── Build Worksheet 4 (Tab 4) ─────────────────────────────────────
+            // col 4 = Total IEEPA Duty Paid ($)
+            const TEAL = '1F6B75';
+            const ws4 = XLSX.utils.aoa_to_sheet(tab4Data);
+            applySheetStyle(ws4, [4], [], TEAL);
+            ws4['!cols'] = [
+                { wch: 12 }, { wch: 16 }, { wch: 12 },
+                { wch: 42 }, { wch: 20 }
+            ];
+            ws4['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:tab4Data.length-2, c:tab4Headers.length-1} }) };
+
             updateProgress(92, 'Assembling workbook…');
 
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws1, 'Chapter 99 Entry Lines Only');
             XLSX.utils.book_append_sheet(wb, ws2, 'Chapter 99 Duty Summary');
             XLSX.utils.book_append_sheet(wb, ws3, 'All Entry Lines');
+            XLSX.utils.book_append_sheet(wb, ws4, 'IEEPA Entries');
             processedWorkbook = wb;
 
             updateProgress(100, 'Complete!');
@@ -796,8 +858,16 @@
                         <div class="stat-num">${fileNumbers.size.toLocaleString()}</div>
                         <div class="stat-label">Unique File #s in CSV</div>
                     </div>
+                    <div class="stat-box">
+                        <div class="stat-num">${(tab4Data.length - 2).toLocaleString()}</div>
+                        <div class="stat-label">IEEPA Entries (Tab 4)</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num">$${tab4TotalDuty.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                        <div class="stat-label">Tab 4 Total IEEPA Duty</div>
+                    </div>
                 `;
-                resultMessage.textContent = `3-tab workbook ready — ${(tab1Data.length - 2).toLocaleString()} Chapter 99 lines matched across ${fileNumbers.size} file numbers.`;
+                resultMessage.textContent = `4-tab workbook ready — ${(tab1Data.length - 2).toLocaleString()} Chapter 99 lines matched across ${fileNumbers.size} file numbers.`;
             }, 400);
 
         } catch (err) {
