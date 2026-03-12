@@ -168,18 +168,18 @@
     <div class="info-box">
         <h3>ℹ️ Output Tabs:</h3>
         <ul>
-            <li><strong>Tab 1 – Chapter 99 Entry Lines Only:</strong> Rows with Chapter 99 ADL codes (HTS starting with 99) extracted directly from your CSV</li>
-            <li><strong>Tab 2 – Chapter 99 Duty Summary:</strong> Pivot of Chapter 99 codes showing total Duty Paid &amp; Entered Value</li>
-            <li><strong>Tab 3 – All Entry Lines:</strong> Full EDI output with expanded ADL lines (original tool output)</li>
-            <li><strong>Tab 4 – IEEPA Entries:</strong> One row per entry where IEEPA Reciprocal or IEEPA Fentanyl duty > $0 — IFF Ref #, Entry #, Entry Date, IEEPA tariff types, and total duty paid</li>
+            <li><strong>Tab 2 – CHAPTER 99 Entry Lines Only:</strong> Rows with Chapter 99 ADL codes (HTS starting with 99) extracted directly from your CSV</li>
+            <li><strong>Tab 3 – CHAPTER 99 Duty Summary:</strong> Pivot of Chapter 99 codes showing total Duty Paid &amp; Entered Value</li>
+            <li><strong>Tab 4 – ALL ENTRY LINES:</strong> Full EDI output with expanded ADL lines (original tool output)</li>
+            <li><strong>Tab 1 – IEEPA Entry List:</strong> One row per entry where IEEPA Reciprocal or IEEPA Fentanyl duty > $0 — IFF Ref #, Entry #, Entry Date, IEEPA tariff types, and total duty paid</li>
         </ul>
     </div>
 
     <div class="tab-preview">
-        <span class="tab-badge">📋 Tab 1: Chapter 99 Entry Lines</span>
-        <span class="tab-badge">📊 Tab 2: Chapter 99 Duty Summary</span>
-        <span class="tab-badge">📄 Tab 3: All Entry Lines</span>
-        <span class="tab-badge">🧾 Tab 4: IEEPA Entries</span>
+        <span class="tab-badge">📋 Tab 2: CHAPTER 99 Entry Lines Only</span>
+        <span class="tab-badge">📊 Tab 3: CHAPTER 99 Duty Summary</span>
+        <span class="tab-badge">📄 Tab 4: ALL ENTRY LINES</span>
+        <span class="tab-badge">🧾 Tab 1: IEEPA Entry List</span>
     </div>
 
     <!-- Single CSV upload -->
@@ -682,7 +682,7 @@
             }
 
             // Filter out entries with $0 total IEEPA duty, then sort by entryDate asc
-            const tab4Headers = ['IFF REF #', 'Entry Number', 'Entry Date', 'Chapter 99 Description (IEEPA Tariffs)', 'Total IEEPA Duty Paid'];
+            const tab4Headers = ['IFF REF #', 'Entry Number', 'Entry Date', 'IEEPA Tariffs', 'Total IEEPA Duty Paid'];
             const tab4Rows = [...entryMap.values()]
                 .filter(e => e.duty > 0)
                 .sort((a, b) => {
@@ -822,10 +822,10 @@
             updateProgress(92, 'Assembling workbook…');
 
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws1, 'Chapter 99 Entry Lines Only');
-            XLSX.utils.book_append_sheet(wb, ws2, 'Chapter 99 Duty Summary');
-            XLSX.utils.book_append_sheet(wb, ws3, 'All Entry Lines');
-            XLSX.utils.book_append_sheet(wb, ws4, 'IEEPA Entries');
+            XLSX.utils.book_append_sheet(wb, ws4, 'IEEPA Entry List');
+            XLSX.utils.book_append_sheet(wb, ws1, 'CHAPTER 99 Entry Lines Only');
+            XLSX.utils.book_append_sheet(wb, ws2, 'CHAPTER 99 Duty Summary');
+            XLSX.utils.book_append_sheet(wb, ws3, 'ALL ENTRY LINES');
             processedWorkbook = wb;
 
             updateProgress(100, 'Complete!');
@@ -860,7 +860,7 @@
                     </div>
                     <div class="stat-box">
                         <div class="stat-num">${(tab4Data.length - 2).toLocaleString()}</div>
-                        <div class="stat-label">IEEPA Entries (Tab 4)</div>
+                        <div class="stat-label">IEEPA Entry List (Tab 1)</div>
                     </div>
                     <div class="stat-box">
                         <div class="stat-num">$${tab4TotalDuty.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
