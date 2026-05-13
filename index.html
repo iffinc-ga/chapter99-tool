@@ -191,7 +191,10 @@
         <input type="file" id="csvFileInput" accept=".csv">
     </div>
 
-    <button class="btn btn-process" id="processBtn" onclick="processFiles()">⚙️ Generate 4-Tab Report</button>
+    <div style="display:flex; gap:10px;">
+        <button class="btn btn-process" id="processBtn" onclick="processFiles()" style="margin-bottom:10px; flex:1;">⚙️ Generate 4-Tab Report</button>
+        <button class="btn btn-new" id="newUploadBtn" onclick="resetUI()" style="display:none; margin-bottom:10px; flex:0 0 auto; width:auto; padding:13px 20px;">🔄 New Upload</button>
+    </div>
 
     <div class="progress-container" id="progressContainer">
         <div class="progress-bar">
@@ -286,7 +289,10 @@
     }
 
     function checkReady() {
-        if (csvData) processBtn.classList.add('ready');
+        if (csvData) {
+            processBtn.classList.add('ready');
+            document.getElementById('newUploadBtn').style.display = 'block';
+        }
     }
 
     // ─── Reset UI for a new upload ────────────────────────────────────────────
@@ -298,6 +304,7 @@
         csvLoadedName.textContent     = '';
         csvUploadArea.classList.remove('loaded', 'dragover');
         processBtn.classList.remove('ready');
+        document.getElementById('newUploadBtn').style.display = 'none';
         resultContainer.classList.remove('active');
         progressContainer.classList.remove('active');
         errorMessage.classList.remove('active');
@@ -506,11 +513,8 @@
         '99030289': 'IEEPA Reciprocal Exclusion',
         '99030290': 'IEEPA Reciprocal Exclusion',
         '99030291': 'IEEPA Reciprocal Exclusion',
+        // ── Section 122 (990303xx) handled by getCh99Desc() prefix check ──
         // ── Section 232, Section 301, and other Chapter 99 ──
-        '99030301': 'IEEPA Reciprocal',
-        '99030302': 'IEEPA Reciprocal',
-        '99030306': 'IEEPA Reciprocal Exclusion',
-        '99030307': 'IEEPA Reciprocal Exclusion',
         '99037410': 'MED/HVY PRTS, NT38 (K) USMCA',
         '99037411': 'MED/HVY PRTS, NT38 (1) ALL CT',
         '99037604': 'OTH THN CMP KTCH CBNT/VAN PRT',
@@ -549,6 +553,12 @@
         '99039451': 'PASS VEH, LT TRKS,NT33 SBDV(M)',
         '99039453': 'PASS VEH, LT TRKS,NT33 SBDV(M)',
     };
+
+    // Helper: any 990303xx code is Section 122, regardless of suffix
+    function getCh99Desc(code, fallback) {
+        if (code.startsWith('990303')) return 'Section 122';
+        return CH99_DESC[code] || fallback || '';
+    }
 
     // ─── Main Processing ─────────────────────────────────────────────────────
     function processFiles() {
@@ -684,7 +694,7 @@
                 // Duty comes from ADVALOREMDUTYAMOUNT on this line.
                 if (htsNumber.startsWith('99')) {
                     const ch99     = htsNumber;
-                    const ch99Desc = CH99_DESC[ch99] || (values[colMap['HTS_DESCRIPTION']] || '').trim();
+                    const ch99Desc = getCh99Desc(ch99, (values[colMap['HTS_DESCRIPTION']] || '').trim());
                     const adl1Hts  = (values[colMap['ADL1_HTS_NUMBER']] || '').trim();
                     const commodityHts = (adl1Hts && !adl1Hts.startsWith('99')) ? adl1Hts : '';
                     const duty = parseFloat(baseduty.replace(/[,$]/g, ''));
@@ -710,7 +720,7 @@
                     if (!adlHts || !adlHts.startsWith('99')) continue;
 
                     const adlDutyIdx = colMap[`ADL${adlNum}_DUTY`];
-                    const ch99Desc   = CH99_DESC[adlHts] || (values[colMap[`ADL${adlNum}_HTS_DESCRIPTION`]] || '').trim();
+                    const ch99Desc   = getCh99Desc(adlHts, (values[colMap[`ADL${adlNum}_HTS_DESCRIPTION`]] || '').trim());
                     const adlDutyRaw = adlDutyIdx !== undefined ? (values[adlDutyIdx] || '').trim() : '';
                     const duty = parseFloat(adlDutyRaw.replace(/[,$]/g, ''));
                     const ev   = parseFloat(enteredVal.replace(/[,$]/g, ''));
