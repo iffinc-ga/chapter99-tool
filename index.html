@@ -697,8 +697,19 @@
                     const ch99Desc = getCh99Desc(ch99, (values[colMap['HTS_DESCRIPTION']] || '').trim());
                     const adl1Hts  = (values[colMap['ADL1_HTS_NUMBER']] || '').trim();
                     const commodityHts = (adl1Hts && !adl1Hts.startsWith('99')) ? adl1Hts : '';
-                    const duty = parseFloat(baseduty.replace(/[,$]/g, ''));
-                    const ev   = parseFloat(enteredVal.replace(/[,$]/g, ''));
+                    // 99030220 in HTS_NUMBER (Pattern 1):
+                    //   net duty = TOTALTARIFFDUTY − (ADL1_VALUEDUTYRATE × ENTEREDVALUE)
+                    // All other Chapter 99 codes: use ADVALOREMDUTYAMOUNT as-is.
+                    let duty;
+                    const ev = parseFloat(enteredVal.replace(/[,$]/g, ''));
+                    if (htsNumber.replace(/[^0-9]/g, '') === '99030220') {
+                        const grossDuty = parseFloat((values[colMap['TOTALTARIFFDUTY']] || '').replace(/[,$]/g, '')) || 0;
+                        const adl1Rate  = parseFloat((values[colMap['ADL1_VALUEDUTYRATE']] || '').replace(/[,%]/g, '')) || 0;
+                        const evNum     = isNaN(ev) ? 0 : ev;
+                        duty = grossDuty - (adl1Rate * evNum);
+                    } else {
+                        duty = parseFloat(baseduty.replace(/[,$]/g, ''));
+                    }
                     tab1Data.push([
                         brokerRef, entryNum, entryDate, lineNum, commodityHts,
                         ch99, ch99Desc, coo,
@@ -722,8 +733,20 @@
                     const adlDutyIdx = colMap[`ADL${adlNum}_DUTY`];
                     const ch99Desc   = getCh99Desc(adlHts, (values[colMap[`ADL${adlNum}_HTS_DESCRIPTION`]] || '').trim());
                     const adlDutyRaw = adlDutyIdx !== undefined ? (values[adlDutyIdx] || '').trim() : '';
-                    const duty = parseFloat(adlDutyRaw.replace(/[,$]/g, ''));
-                    const ev   = parseFloat(enteredVal.replace(/[,$]/g, ''));
+                    // 99030220 in ADL column (Pattern 2):
+                    //   net duty = ADLn_DUTY − (ADL{n+1}_VALUEDUTYRATE × ENTEREDVALUE)
+                    // All other Chapter 99 codes: use ADLn_DUTY as-is.
+                    let duty;
+                    const ev = parseFloat(enteredVal.replace(/[,$]/g, ''));
+                    if (adlHts.replace(/[^0-9]/g, '') === '99030220') {
+                        const grossDuty   = parseFloat(adlDutyRaw.replace(/[,$]/g, '')) || 0;
+                        const nextRateCol = `ADL${adlNum + 1}_VALUEDUTYRATE`;
+                        const nextRate    = parseFloat((colMap[nextRateCol] !== undefined ? (values[colMap[nextRateCol]] || '') : '').replace(/[,%]/g, '')) || 0;
+                        const evNum       = isNaN(ev) ? 0 : ev;
+                        duty = grossDuty - (nextRate * evNum);
+                    } else {
+                        duty = parseFloat(adlDutyRaw.replace(/[,$]/g, ''));
+                    }
                     tab1Data.push([
                         brokerRef, entryNum, entryDate, lineNum, htsNumber,
                         adlHts, ch99Desc, coo,
