@@ -367,12 +367,12 @@
         '99030125': 'IEEPA Reciprocal',
         '99030126': 'IEEPA Reciprocal Exclusion',
         '99030127': 'IEEPA Reciprocal Exclusion',
-        '99030128': 'IEEPA Reciprocal Exclusion',
+        '99030128': 'IEEPA Reciprocal Exclusion – In Transit',
         '99030129': 'IEEPA Reciprocal Exclusion',
         '99030130': 'IEEPA Reciprocal Exclusion',
         '99030131': 'IEEPA Reciprocal Exclusion',
-        '99030132': 'IEEPA Reciprocal Exclusion',
-        '99030133': 'IEEPA Reciprocal Exclusion',
+        '99030132': 'IEEPA Reciprocal Exclusion – Annex II',
+        '99030133': 'IEEPA Reciprocal Exclusion – Section 232',
         '99030134': 'IEEPA Reciprocal Exclusion',
         '99030143': 'IEEPA Reciprocal',
         '99030144': 'IEEPA Reciprocal',
@@ -513,52 +513,53 @@
         '99030289': 'IEEPA Reciprocal Exclusion',
         '99030290': 'IEEPA Reciprocal Exclusion',
         '99030291': 'IEEPA Reciprocal Exclusion',
-        // ── Section 122 (990303xx) handled by getCh99Desc() prefix check ──
-        // ── Section 232, Section 301, and other Chapter 99 ──
-        '99037410': 'MED/HVY PRTS, NT38 (K) USMCA',
-        '99037411': 'MED/HVY PRTS, NT38 (1) ALL CT',
-        '99037604': 'OTH THN CMP KTCH CBNT/VAN PRT',
+        // ── Section 122 (990303xx) and Section 232 (990374/76/79/81/82/85/94)
+        //    prefixes are handled by getCh99Desc() — entries below are codes
+        //    NOT covered by those prefix rules ──
         '99037801': 'CU CNT NT36(B) ALL CNTRYS',
         '99037802': 'NON-CU CNT NT 36(C)',
         '99038001': 'STL PRD,NT 16,EX PRD EXCL',
         '99038065': 'STEEL,HOT ROLL BARS,CCCXXX',
         '99038069': 'STEEL,HOT ROLL BARS,CCCXXX',
-        '99038187': 'STL, NT 16(J) ALL CTRIES',
-        '99038190': 'DERIV STL, NT16(M) ALL CTRIES',
-        '99038191': 'DERIV STL, NT16(N) ALL CTRIES',
-        '99038192': 'DERIV STL, NT16MNTU MELT/PO',
-        '99038197': 'DERIV STL, NT16(T) GB',
-        '99038198': 'DERIV STL, NT 16 (U), UK',
-        '99038501': 'ALUM PRD,NT 19,EX PRD EXCL',
-        '99038502': 'ALU, NT19(G), ALL CTRIES',
-        '99038507': 'DERIV ALUM, NT19(J), ALL CTRIE',
-        '99038508': 'DERIV ALUM, NT19(K), ALL CTRIE',
-        '99038509': 'DERIV ALUM, SML AND CAST US',
-        '99038512': 'ALU, NT19(O), GB',
-        '99038515': 'DERIV ALUM, NT19(S), GB',
         '99039008': 'RUSSIA COLUMN 2 INCREASE 35%',
         '99039101': 'ARTS, PRDS OF CN SUB(B)US NT31',
         '99039106': 'PERM MAGNTS, LITH N EV BATT',
-        '99039401': 'PAX VEH & LT, NT33(A), ALL CTR',
-        '99039404': 'N PA VEH, LT; US CON NT33(E)',
-        '99039405': 'AUTO PRT, LT TKS, NT33(G)',
-        '99039406': 'CLS UN NT33(G/H)USMCA SB (P)',
-        '99039441': 'PAX VEH & LT TRKS, NT33 SB/DV',
-        '99039451': 'PASS VEH, LT TRKS,NT33 SBDV(M)',
-        '99039453': 'PASS VEH, LT TRKS,NT33 SBDV(M)',
     };
 
     // Helper: any 990303xx code is Section 122, regardless of suffix
     // Section 301 recognition (3 types, matched by prefix / numeric range):
-    //   1. Section 301 - China          : 9903.88.## (all suffixes)
-    //   2. Section 301 - Brazil         : 9903.05.01 - 9903.05.09
+    //   1. CN Section 301               : 9903.88.## (all suffixes)
+    //   2. BR Section 301               : 9903.05.01 - 9903.05.09
     //   3. Section 301 - Forced Labor   : 9903.05.20 - 9903.06.## (includes the
     //      EU/Japan/S.Korea/Switzerland/Taiwan combined-rate codes, which keep
-    //      this same generic label but use the net-duty calc below)
+    //      this same generic label; see exact-code overrides below for the
+    //      In Transit / Section 232 exclusion codes within this range)
     // 99030220 (IEEPA Reciprocal) uses: TOTALTARIFFDUTY − (ADL1_VALUEDUTYRATE × ENTEREDVALUE)
     const IEEPA_RATE_CODE = '99030220';
     // Combined-rate Section 301 codes (EU/Japan/S.Korea/Switzerland/Taiwan) are reported
     // as-is: ADVALOREMDUTYAMOUNT (Pattern 1) or ADLn_DUTY (Pattern 2), no adjustment.
+
+    // Exact-code overrides — checked before any prefix/range rule below.
+    const CH99_EXACT_OVERRIDES = {
+        '99030585': 'Section 301 Forced Labor In Transit Exclusion',
+        '99030590': 'Section 301 Forced Labor Exclusion - Section 232',
+        '99030306': 'Section 122 Exclusion - Section 232',
+        '99037902': 'Section 232 Exclusion',
+        '99037903': 'Section 232 Exclusion',
+        '99037904': 'Section 232 Exclusion',
+        '99037905': 'Section 232 Exclusion',
+        '99037906': 'Section 232 Exclusion',
+        '99037907': 'Section 232 Exclusion',
+        '99037908': 'Section 232 Exclusion',
+        '99037909': 'Section 232 Exclusion',
+        '99037411': 'Section 232 Exclusion',
+        '99037407': 'Section 232 Exclusion',
+        '99039404': 'Section 232 Exclusion',
+        '99037604': 'Section 232 Exclusion',
+        '99039406': 'Section 232 Exclusion'
+    };
+    // Generic Section 232 prefixes (9903.74/76/79/81/82/85/94.##)
+    const SECTION_232_PREFIXES = ['990374', '990376', '990379', '990381', '990382', '990385', '990394'];
 
     // Walk ADL1..ADL7 and return the first one whose HTS number is NOT itself a
     // Chapter 99 code — i.e. the actual underlying commodity line, skipping past
@@ -576,11 +577,13 @@
     }
     function getCh99Desc(code, fallback) {
         const c = String(code).replace(/[^0-9]/g, '');
+        if (CH99_EXACT_OVERRIDES[c]) return CH99_EXACT_OVERRIDES[c];
         if (c.startsWith('990303')) return 'Section 122';
-        if (c.startsWith('990388')) return 'Section 301 - China';
+        if (c.startsWith('990388')) return 'CN Section 301';
         const num = parseInt(c, 10);
-        if (num >= 99030501 && num <= 99030509) return 'Section 301 - Brazil';
+        if (num >= 99030501 && num <= 99030509) return 'BR Section 301';
         if (num >= 99030520 && num <= 99030699) return 'Section 301 - Forced Labor';
+        if (SECTION_232_PREFIXES.some(p => c.startsWith(p))) return 'Section 232';
         return CH99_DESC[code] || fallback || '';
     }
 
