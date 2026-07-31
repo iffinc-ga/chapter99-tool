@@ -536,12 +536,6 @@
         '99038509': 'DERIV ALUM, SML AND CAST US',
         '99038512': 'ALU, NT19(O), GB',
         '99038515': 'DERIV ALUM, NT19(S), GB',
-        '99038801': 'ARTICLE OF CHINA,US NTE 20(A)',
-        '99038802': 'ARTICLE OF CHINA,US NTE 20(C)',
-        '99038803': 'ARTICLE OF CHINA,US NTE 20(F)',
-        '99038804': 'ARTICLE OF CHINA,US NTE 20(G)',
-        '99038815': 'ARTICLE OF CHINA,US NTE 20(R)',
-        '99038869': 'ARTCLS OF CHINA,US NTE 20(VVV)',
         '99039008': 'RUSSIA COLUMN 2 INCREASE 35%',
         '99039101': 'ARTS, PRDS OF CN SUB(B)US NT31',
         '99039106': 'PERM MAGNTS, LITH N EV BATT',
@@ -555,8 +549,38 @@
     };
 
     // Helper: any 990303xx code is Section 122, regardless of suffix
+    // Section 301 recognition (3 types, matched by prefix / numeric range):
+    //   1. Section 301 - China          : 9903.88.## (all suffixes)
+    //   2. Section 301 - Brazil         : 9903.05.01 - 9903.05.09
+    //   3. Section 301 - Forced Labor   : 9903.05.20 - 9903.06.## (includes the
+    //      EU/Japan/S.Korea/Switzerland/Taiwan combined-rate codes, which keep
+    //      this same generic label but use the net-duty calc below)
+    // 99030220 (IEEPA Reciprocal) uses: TOTALTARIFFDUTY − (ADL1_VALUEDUTYRATE × ENTEREDVALUE)
+    const IEEPA_RATE_CODE = '99030220';
+    // Combined-rate Section 301 codes (EU/Japan/S.Korea/Switzerland/Taiwan) are reported
+    // as-is: ADVALOREMDUTYAMOUNT (Pattern 1) or ADLn_DUTY (Pattern 2), no adjustment.
+
+    // Walk ADL1..ADL7 and return the first one whose HTS number is NOT itself a
+    // Chapter 99 code — i.e. the actual underlying commodity line, skipping past
+    // any stacked Chapter 99 duties (e.g. a Section 232 derivative) that may sit in ADL1.
+    // Used only to populate the commodity HTS display column.
+    function findCommodityADL(values, colMap) {
+        for (let n = 1; n <= 7; n++) {
+            const hts = (values[colMap[`ADL${n}_HTS_NUMBER`]] || '').trim();
+            if (hts && !hts.startsWith('99')) {
+                const duty = parseFloat((values[colMap[`ADL${n}_DUTY`]] || '').replace(/[,$]/g, '')) || 0;
+                return { hts, duty };
+            }
+        }
+        return { hts: '', duty: 0 };
+    }
     function getCh99Desc(code, fallback) {
-        if (code.startsWith('990303')) return 'Section 122';
+        const c = String(code).replace(/[^0-9]/g, '');
+        if (c.startsWith('990303')) return 'Section 122';
+        if (c.startsWith('990388')) return 'Section 301 - China';
+        const num = parseInt(c, 10);
+        if (num >= 99030501 && num <= 99030509) return 'Section 301 - Brazil';
+        if (num >= 99030520 && num <= 99030699) return 'Section 301 - Forced Labor';
         return CH99_DESC[code] || fallback || '';
     }
 
@@ -695,14 +719,18 @@
                 if (htsNumber.startsWith('99')) {
                     const ch99     = htsNumber;
                     const ch99Desc = getCh99Desc(ch99, (values[colMap['HTS_DESCRIPTION']] || '').trim());
-                    const adl1Hts  = (values[colMap['ADL1_HTS_NUMBER']] || '').trim();
-                    const commodityHts = (adl1Hts && !adl1Hts.startsWith('99')) ? adl1Hts : '';
-                    // 99030220 in HTS_NUMBER (Pattern 1):
-                    //   net duty = TOTALTARIFFDUTY − (ADL1_VALUEDUTYRATE × ENTEREDVALUE)
-                    // All other Chapter 99 codes: use ADVALOREMDUTYAMOUNT as-is.
+                    const htsNorm  = htsNumber.replace(/[^0-9]/g, '');
+                    const commodityADL = findCommodityADL(values, colMap);
+                    const commodityHts = commodityADL.hts;
+                    // Duty logic in HTS_NUMBER (Pattern 1):
+                    //   99030220 (IEEPA Reciprocal):
+                    //     net duty = TOTALTARIFFDUTY − (ADL1_VALUEDUTYRATE × ENTEREDVALUE)
+                    //   All other Chapter 99 codes (including the combined-rate Section 301
+                    //   codes EU/Japan/S.Korea/Switzerland/Taiwan): use ADVALOREMDUTYAMOUNT
+                    //   as reported, no adjustment.
                     let duty;
                     const ev = parseFloat(enteredVal.replace(/[,$]/g, ''));
-                    if (htsNumber.replace(/[^0-9]/g, '') === '99030220') {
+                    if (htsNorm === IEEPA_RATE_CODE) {
                         const grossDuty = parseFloat((values[colMap['TOTALTARIFFDUTY']] || '').replace(/[,$]/g, '')) || 0;
                         const adl1Rate  = parseFloat((values[colMap['ADL1_VALUEDUTYRATE']] || '').replace(/[,%]/g, '')) || 0;
                         const evNum     = isNaN(ev) ? 0 : ev;
@@ -733,12 +761,14 @@
                     const adlDutyIdx = colMap[`ADL${adlNum}_DUTY`];
                     const ch99Desc   = getCh99Desc(adlHts, (values[colMap[`ADL${adlNum}_HTS_DESCRIPTION`]] || '').trim());
                     const adlDutyRaw = adlDutyIdx !== undefined ? (values[adlDutyIdx] || '').trim() : '';
-                    // 99030220 in ADL column (Pattern 2):
+                    // Net-duty in ADL column (Pattern 2) — only 99030220 (IEEPA Reciprocal)
+                    // is expected here; the combined-rate Section 301 codes (EU/Japan/S.Korea/
+                    // Switzerland/Taiwan) only ever appear as the primary HTS_NUMBER (Pattern 1):
                     //   net duty = ADLn_DUTY − (ADL{n+1}_VALUEDUTYRATE × ENTEREDVALUE)
                     // All other Chapter 99 codes: use ADLn_DUTY as-is.
                     let duty;
                     const ev = parseFloat(enteredVal.replace(/[,$]/g, ''));
-                    if (adlHts.replace(/[^0-9]/g, '') === '99030220') {
+                    if (adlHts.replace(/[^0-9]/g, '') === IEEPA_RATE_CODE) {
                         const grossDuty   = parseFloat(adlDutyRaw.replace(/[,$]/g, '')) || 0;
                         const nextRateCol = `ADL${adlNum + 1}_VALUEDUTYRATE`;
                         const nextRate    = parseFloat((colMap[nextRateCol] !== undefined ? (values[colMap[nextRateCol]] || '') : '').replace(/[,%]/g, '')) || 0;
