@@ -628,18 +628,19 @@
             updateProgress(22, 'Building Tab 3 – All Entry Lines…');
 
             const outputColumns = [
-                'Broker Ref #','Entry #','Export Country','Export Date','Origin Country',
+                'Broker Ref #','Entry #','Line #','Export Country','Export Date','Origin Country',
                 'Entry Date','Bill of Lading','Manufacturer Name','Tariff Description',
-                'HTS Code','Entered Value','Duty','Commercial Invoice Number','Liquidation Date'
+                'HTS Code','Entered Value','Duty','Commercial Invoice Number','Invoice Sequence','Liquidation Date'
             ];
             const columnMapping = {
-                'Broker Ref #':'BROKERREFERENCE','Entry #':'ENTRYNUMBER',
+                'Broker Ref #':'BROKERREFERENCE','Entry #':'ENTRYNUMBER','Line #':'LINENUMBER',
                 'Export Country':'COUNTRYOFEXPORT','Export Date':'DATEOFEXPORT',
                 'Origin Country':'COUNTRYOFORIGIN','Entry Date':'ENTRYDATE',
                 'Bill of Lading':'MASTERBILLNUMBERS','Manufacturer Name':'MANUFACTURERNAME',
                 'Tariff Description':'HTS_DESCRIPTION','HTS Code':'HTS_NUMBER',
                 'Entered Value':'ENTEREDVALUE','Duty':'ADVALOREMDUTYAMOUNT',
-                'Commercial Invoice Number':'INVOICENUMBER','Liquidation Date':'LIQUIDATIONDATE'
+                'Commercial Invoice Number':'INVOICENUMBER','Invoice Sequence':'INVOICESEQUENCE',
+                'Liquidation Date':'LIQUIDATIONDATE'
             };
 
             const tab3Data = [outputColumns];
@@ -667,27 +668,28 @@
                     const adlDescIdx = colMap[`ADL${adlNum}_HTS_DESCRIPTION`];
                     const adlDutyIdx = colMap[`ADL${adlNum}_DUTY`];
                     tab3Data.push([
-                        baseRow['Broker Ref #'], baseRow['Entry #'],
+                        baseRow['Broker Ref #'], baseRow['Entry #'], baseRow['Line #'],
                         baseRow['Export Country'], baseRow['Export Date'],
                         baseRow['Origin Country'], baseRow['Entry Date'],
                         baseRow['Bill of Lading'], baseRow['Manufacturer Name'],
                         adlDescIdx !== undefined ? (values[adlDescIdx] || '').trim() : '',
                         adlHts, baseRow['Entered Value'],
                         adlDutyIdx !== undefined ? (values[adlDutyIdx] || '').trim() : '',
-                        baseRow['Commercial Invoice Number'], baseRow['Liquidation Date']
+                        baseRow['Commercial Invoice Number'], baseRow['Invoice Sequence'],
+                        baseRow['Liquidation Date']
                     ]);
                 }
                 if (i % 50 === 0) updateProgress(22 + (i / lines.length) * 18, `Tab 3: row ${i}…`);
             }
 
             for (let i = 1; i < tab3Data.length; i++) {
-                const d = parseFloat((tab3Data[i][11] || '').toString().replace(/[,$]/g,''));
-                const v = parseFloat((tab3Data[i][10] || '').toString().replace(/[,$]/g,''));
+                const d = parseFloat((tab3Data[i][12] || '').toString().replace(/[,$]/g,''));
+                const v = parseFloat((tab3Data[i][11] || '').toString().replace(/[,$]/g,''));
                 if (!isNaN(d)) tab3TotalDuty += d;
                 if (!isNaN(v)) tab3TotalEV   += v;
             }
             const tab3Totals = Array(outputColumns.length).fill('');
-            tab3Totals[0] = 'TOTAL'; tab3Totals[10] = tab3TotalEV; tab3Totals[11] = tab3TotalDuty;
+            tab3Totals[0] = 'TOTAL'; tab3Totals[11] = tab3TotalEV; tab3Totals[12] = tab3TotalDuty;
             tab3Data.push(tab3Totals);
 
             // ── Tab 1: Chapter 99 Entry Lines (built from CSV ADL columns) ──────
@@ -985,12 +987,12 @@
 
             // ── Build Worksheet 3 (Tab 3) ─────────────────────────────────────
             const ws3 = XLSX.utils.aoa_to_sheet(tab3Data);
-            applySheetStyle(ws3, [10, 11], [], PURP);
+            applySheetStyle(ws3, [11, 12], [], PURP);
             ws3['!cols'] = [
-                { wch: 12 }, { wch: 14 }, { wch: 8 }, { wch: 12 },
+                { wch: 12 }, { wch: 14 }, { wch: 8 }, { wch: 8 }, { wch: 12 },
                 { wch: 8 }, { wch: 12 }, { wch: 20 }, { wch: 25 },
                 { wch: 40 }, { wch: 12 }, { wch: 14 }, { wch: 12 },
-                { wch: 20 }, { wch: 12 }
+                { wch: 20 }, { wch: 10 }, { wch: 12 }
             ];
             ws3['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:tab3Data.length-2, c:outputColumns.length-1} }) };
 
